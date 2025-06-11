@@ -39,6 +39,7 @@ struct PieceType {
 
 static const int LAYER_COUNT = 3;
 static const int LAYER_MULTIMESH_INSTANCE_COUNT = 16384;
+static const Vector2i LAYER_DATA_IMAGE_SIZE{128, 128};
 static const float AA_WIDTH = 0.5;
 
 static const float JOINT_RADIUS = 4;
@@ -61,7 +62,6 @@ struct RenderLayer {
     void resetRender();
 
     Ref<Image> renderDataImg;
-    Ref<ImageTexture> renderDataTex;
     void renderPartial(float scale, Vector2 shift, float aaWidth);
 
     void init(MultiMeshInstance2D* mmi_, uint32_t layerID);
@@ -86,6 +86,9 @@ private:
     static ObjType::Type pieceInsides[PieceType::PIECE_TYPE_SIZE];
     static ObjType::Type pieceDecals[PieceType::PIECE_TYPE_SIZE];
 
+    float scale = 1;
+    Vector2 shift{0, 0};
+
     static void setupPieceBorders();
     static void setupPieceInsides();
     static void setupPieceDecals();
@@ -101,12 +104,8 @@ private:
     static Ref<QuadMesh> mesh;
     RenderLayer layers[LAYER_COUNT]; //0: areas, 1: borders, 2: insides
 
-    Array renderDataArr;
+    Ref<Texture2DArray> renderData;
     void setupRenderDataArr();
-
-    void resetRender();
-
-    void render();
 
 public:
     void setColors(PackedColorArray colors_);
@@ -127,9 +126,15 @@ public:
     void setBorderThickness(ObjType::Type objType, double borderThickness);
     double getBorderThickness(ObjType::Type objType);
 
-    float scale = 1;
-    Vector2 shift{0, 0};
-    void zoom(float deltaScale, Vector2 cursorPos); //TODO: do this properly
+    void setScale(float scale_);
+    float getScale();
+
+    void setShift(Vector2 shift_);
+    Vector2 getShift();
+
+    void resetRender();
+
+    void render();
 
 private:
     void addRoundedRect(Vector2 pos, Vector2 size, float rotation, PieceType::Type type,

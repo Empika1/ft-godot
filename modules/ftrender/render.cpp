@@ -66,7 +66,6 @@ void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth) {
 		Color data = packDataToColor(sizes[i] * scale, centers[i] * scale, objTypes[i]);
 		renderDataImg->set_pixel(i % 128, i / 128, data);
 	}
-	renderDataTex->update(renderDataImg);
 }
 
 void RenderLayer::init(MultiMeshInstance2D *mmi_, uint32_t layerID) {
@@ -74,7 +73,6 @@ void RenderLayer::init(MultiMeshInstance2D *mmi_, uint32_t layerID) {
 	mmi->set_instance_shader_parameter("layerID", layerID);
 
 	renderDataImg = Image::create_empty(128, 128, false, Image::FORMAT_RGBAF);
-	renderDataTex = ImageTexture::create_from_image(renderDataImg);
 }
 
 void FTRender::_bind_methods() {
@@ -147,6 +145,32 @@ void FTRender::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_COLOR_ARRAY, "colors"), "setColors", "getColors");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT64_ARRAY, "cornerRadii"), "setCornerRadii", "getCornerRadii");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT64_ARRAY, "borderThicknesses"), "setBorderThicknesses", "getBorderThicknesses");
+
+	ClassDB::bind_method(D_METHOD("setScale", "scale"), &FTRender::setScale);
+	ClassDB::bind_method(D_METHOD("getScale"), &FTRender::getScale);
+
+	ClassDB::bind_method(D_METHOD("setShift", "shift"), &FTRender::setShift);
+	ClassDB::bind_method(D_METHOD("getShift"), &FTRender::getShift);
+
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scale"), "setScale", "getScale");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "shift"), "setShift", "getShift");
+
+	ClassDB::bind_method(D_METHOD("resetRender"), &FTRender::resetRender);
+	ClassDB::bind_method(D_METHOD("render"), &FTRender::render);
+
+	ClassDB::bind_method(D_METHOD("addStaticRect", "pos", "size", "rotation"), &FTRender::addStaticRect);
+	ClassDB::bind_method(D_METHOD("addStaticCirc", "pos", "radius", "rotation"), &FTRender::addStaticCirc);
+	ClassDB::bind_method(D_METHOD("addDynamicRect", "pos", "size", "rotation"), &FTRender::addDynamicRect);
+	ClassDB::bind_method(D_METHOD("addDynamicCirc", "pos", "radius", "rotation"), &FTRender::addDynamicCirc);
+	ClassDB::bind_method(D_METHOD("addGPRect", "pos", "size", "rotation"), &FTRender::addGPRect);
+	ClassDB::bind_method(D_METHOD("addGPCirc", "pos", "radius", "rotation"), &FTRender::addGPCirc);
+	ClassDB::bind_method(D_METHOD("addWood", "pos", "size", "rotation"), &FTRender::addWood);
+	ClassDB::bind_method(D_METHOD("addWater", "pos", "size", "rotation"), &FTRender::addWater);
+	ClassDB::bind_method(D_METHOD("addCW", "pos", "radius", "rotation"), &FTRender::addCW);
+	ClassDB::bind_method(D_METHOD("addCCW", "pos", "radius", "rotation"), &FTRender::addCCW);
+	ClassDB::bind_method(D_METHOD("addUPW", "pos", "radius", "rotation"), &FTRender::addUPW);
+	ClassDB::bind_method(D_METHOD("addBuildArea", "pos", "size", "rotation"), &FTRender::addBuildArea);
+	ClassDB::bind_method(D_METHOD("addGoalArea", "pos", "size", "rotation"), &FTRender::addGoalArea);
 
 	shader.instantiate();
 	shader->set_code(renderShader);
@@ -289,23 +313,17 @@ void FTRender::updateShaderBorderThicknesses() {
 Ref<QuadMesh> FTRender::mesh;
 
 void FTRender::setupRenderDataArr() {
-	renderDataArr.resize(LAYER_COUNT);
+	Vector<Ref<Image>> tempImageArr;
+	tempImageArr.resize(LAYER_COUNT);
+	Ref<Image> tempImage;
+	tempImage.instantiate();
+	tempImage->create_empty(LAYER_DATA_IMAGE_SIZE.x, LAYER_DATA_IMAGE_SIZE.y,
+			false, Image::FORMAT_RGBAF);
 	for (int i = 0; i < LAYER_COUNT; i++) {
-		renderDataArr.set(i, layers[i].renderDataImg);
+		tempImageArr.set(i, tempImage);
 	}
-}
-
-void FTRender::resetRender() {
-	for (auto layer : layers) {
-		layer.resetRender();
-	}
-}
-
-void FTRender::render() {
-	for (auto layer : layers) {
-		layer.renderPartial(scale, shift, AA_WIDTH);
-	}
-	shaderMaterial->set_shader_parameter("data", renderDataArr);
+	renderData.instantiate();
+	renderData->create_from_images(tempImageArr);
 }
 
 void FTRender::setColors(PackedColorArray colors_) {
@@ -356,10 +374,34 @@ double FTRender::getBorderThickness(ObjType::Type objType) {
 	return borderThicknesses[objType];
 }
 
-void FTRender::zoom(float deltaScale, Vector2 cursorPos) {
-	float old_scale = scale;
-	scale *= deltaScale;
-	shift -= (cursorPos - shift) * (scale / old_scale - 1);
+void FTRender::setScale(float scale_) {
+	scale = scale_;
+}
+
+float FTRender::getScale() {
+	return scale;
+}
+
+void FTRender::setShift(Vector2 shift_) {
+	shift = shift_;
+}
+
+Vector2 FTRender::getShift() {
+	return shift;
+}
+
+void FTRender::resetRender() {
+	for (auto layer : layers) {
+		layer.resetRender();
+	}
+}
+
+void FTRender::render() {
+	for (int i = 0; i < LAYER_COUNT; i++) {
+		layers[i].renderPartial(scale, shift, AA_WIDTH);
+		renderData->update_layer(layers[i].renderDataImg, i);
+	}
+	shaderMaterial->set_shader_parameter("data", renderData);
 }
 
 float getRealInsideSize(float size, float borderThickness) {
@@ -399,11 +441,11 @@ void FTRender::addJoint(Vector2 pos, float rotation, ObjType::Type type) {
 }
 
 void FTRender::addRectJoints(Vector2 pos, Vector2 size, float rotation) {
-    addJoint(pos, 0, ObjType::JOINT_WHEEL_CENTER);
-    addJoint(Vector2(size.x * 0.5, size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
-    addJoint(Vector2(-size.x * 0.5, size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
-    addJoint(Vector2(size.x * 0.5, -size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
-    addJoint(Vector2(-size.x * 0.5, -size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
+	addJoint(pos, 0, ObjType::JOINT_WHEEL_CENTER);
+	addJoint(Vector2(size.x * 0.5, size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
+	addJoint(Vector2(-size.x * 0.5, size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
+	addJoint(Vector2(size.x * 0.5, -size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
+	addJoint(Vector2(-size.x * 0.5, -size.y * 0.5).rotated(rotation) + pos, 0, ObjType::JOINT_NORMAL);
 }
 
 void FTRender::addJointedRect(Vector2 pos, Vector2 size, float rotation, PieceType::Type type) {
@@ -452,57 +494,57 @@ void FTRender::addDecalCircle(Vector2 pos, float radius, float rotation, PieceTy
 }
 
 void FTRender::addStaticRect(Vector2 pos, Vector2 size, float rotation) {
-    addRoundedRectPiece(pos, size, rotation, PieceType::STATIC_RECT);
+	addRoundedRectPiece(pos, size, rotation, PieceType::STATIC_RECT);
 }
 
 void FTRender::addStaticCirc(Vector2 pos, float radius, float rotation) {
-    addCirclePiece(pos, radius, rotation, PieceType::STATIC_CIRC);
+	addCirclePiece(pos, radius, rotation, PieceType::STATIC_CIRC);
 }
 
 void FTRender::addDynamicRect(Vector2 pos, Vector2 size, float rotation) {
-    addRoundedRectPiece(pos, size, rotation, PieceType::DYNAMIC_RECT);
+	addRoundedRectPiece(pos, size, rotation, PieceType::DYNAMIC_RECT);
 }
 
 void FTRender::addDynamicCirc(Vector2 pos, float radius, float rotation) {
-    addCirclePiece(pos, radius, rotation, PieceType::DYNAMIC_CIRC);
+	addCirclePiece(pos, radius, rotation, PieceType::DYNAMIC_CIRC);
 }
 
 void FTRender::addGPRect(Vector2 pos, Vector2 size, float rotation) {
-    addJointedRect(pos, size, rotation, PieceType::GP_RECT);
+	addJointedRect(pos, size, rotation, PieceType::GP_RECT);
 }
 
 void FTRender::addGPCirc(Vector2 pos, float radius, float rotation) {
-    addJointedCircle(pos, radius, rotation, PieceType::GP_CIRC);
+	addJointedCircle(pos, radius, rotation, PieceType::GP_CIRC);
 }
 
 void FTRender::addWood(Vector2 pos, Vector2 size, float rotation) {
-    addRoundedRectPiece(pos, size + WOOD_SIZE_PADDING, rotation, PieceType::WOOD);
-    addRodJoints(pos, size, rotation);
+	addRoundedRectPiece(pos, size + WOOD_SIZE_PADDING, rotation, PieceType::WOOD);
+	addRodJoints(pos, size, rotation);
 }
 
 void FTRender::addWater(Vector2 pos, Vector2 size, float rotation) {
-    addRoundedRectPiece(pos, size + WATER_SIZE_PADDING, rotation, PieceType::WATER);
-    addRodJoints(pos, size, rotation);
+	addRoundedRectPiece(pos, size + WATER_SIZE_PADDING, rotation, PieceType::WATER);
+	addRodJoints(pos, size, rotation);
 }
 
 void FTRender::addCW(Vector2 pos, float radius, float rotation) {
-    addJointedCircle(pos, radius, rotation, PieceType::CW);
+	addJointedCircle(pos, radius, rotation, PieceType::CW);
 }
 
 void FTRender::addCCW(Vector2 pos, float radius, float rotation) {
-    addJointedCircle(pos, radius, rotation, PieceType::CCW);
+	addJointedCircle(pos, radius, rotation, PieceType::CCW);
 }
 
 void FTRender::addUPW(Vector2 pos, float radius, float rotation) {
-    addJointedCircle(pos, radius, rotation, PieceType::UPW);
+	addJointedCircle(pos, radius, rotation, PieceType::UPW);
 }
 
 void FTRender::addBuildArea(Vector2 pos, Vector2 size, float rotation) {
-    addArea(pos, size, rotation, PieceType::BUILD);
+	addArea(pos, size, rotation, PieceType::BUILD);
 }
 
 void FTRender::addGoalArea(Vector2 pos, Vector2 size, float rotation) {
-    addArea(pos, size, rotation, PieceType::GOAL);
+	addArea(pos, size, rotation, PieceType::GOAL);
 }
 
 FTRender::FTRender() {
