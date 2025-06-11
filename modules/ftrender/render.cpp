@@ -4,6 +4,7 @@
 #include "modules/ftrender/embeds.h"
 #include "scene/2d/sprite_2d.h"
 #include "scene/resources/image_texture.h"
+#include "core/string/print_string.h"
 #include <cmath>
 #include <cstdint>
 
@@ -30,15 +31,7 @@ Color packDataToColor(Vector2 size, Vector2 center, ObjType::Type type) {
 }
 
 void RenderLayer::addRenderObject(Vector2 pos, Vector2 size, float rotation, Vector2 center, ObjType::Type type) {
-	int instanceCount = mmi->get_multimesh()->get_instance_count();
-	ERR_FAIL_COND_MSG(renderCount >= instanceCount, "Too many objects to render!");
-
-	sizes.resize(instanceCount);
-	rotations.resize(instanceCount);
-	poses.resize(instanceCount);
-	centers.resize(instanceCount);
-	objTypes.resize(instanceCount);
-
+	ERR_FAIL_COND_MSG(renderCount >= LAYER_MULTIMESH_INSTANCE_COUNT, "Too many objects to render!");
 	sizes.set(renderCount, size);
 	rotations.set(renderCount, rotation);
 	poses.set(renderCount, pos);
@@ -68,11 +61,18 @@ void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth) {
 	}
 }
 
-void RenderLayer::init(MultiMeshInstance2D *mmi_, uint32_t layerID) {
+void RenderLayer::init(MultiMeshInstance2D *mmi_, uint32_t layerID_) {
+    layerID = layerID_;
 	mmi = mmi_;
-	mmi->set_instance_shader_parameter("layerID", layerID);
+	mmi->set_instance_shader_parameter("layerID", layerID_);
 
 	renderDataImg = Image::create_empty(128, 128, false, Image::FORMAT_RGBAF);
+
+    sizes.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
+    rotations.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
+    poses.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
+    centers.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
+    objTypes.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
 }
 
 void FTRender::_bind_methods() {
@@ -230,6 +230,7 @@ PackedFloat32Array FTRender::getDefaultCornerRadii() {
 
 PackedFloat32Array FTRender::getDefaultBorderThicknesses() {
 	PackedFloat32Array borderThicknesses;
+    borderThicknesses.resize(ObjType::OBJ_TYPE_SIZE);
 	borderThicknesses.set(ObjType::STATIC_RECT_BORDER, 4);
 	borderThicknesses.set(ObjType::STATIC_CIRC_BORDER, 4);
 	borderThicknesses.set(ObjType::DYNAMIC_RECT_BORDER, 4);
@@ -315,9 +316,7 @@ Ref<QuadMesh> FTRender::mesh;
 void FTRender::setupRenderDataArr() {
 	Vector<Ref<Image>> tempImageArr;
 	tempImageArr.resize(LAYER_COUNT);
-	Ref<Image> tempImage;
-	tempImage.instantiate();
-	tempImage->create_empty(LAYER_DATA_IMAGE_SIZE.x, LAYER_DATA_IMAGE_SIZE.y,
+	Ref<Image> tempImage = Image::create_empty(LAYER_DATA_IMAGE_SIZE.x, LAYER_DATA_IMAGE_SIZE.y,
 			false, Image::FORMAT_RGBAF);
 	for (int i = 0; i < LAYER_COUNT; i++) {
 		tempImageArr.set(i, tempImage);
@@ -391,7 +390,7 @@ Vector2 FTRender::getShift() {
 }
 
 void FTRender::resetRender() {
-	for (auto layer : layers) {
+	for (auto &layer : layers) {
 		layer.resetRender();
 	}
 }
@@ -568,6 +567,7 @@ FTRender::FTRender() {
 		mm.instantiate();
 		mm->set_instance_count(LAYER_MULTIMESH_INSTANCE_COUNT);
 		mm->set_visible_instance_count(0);
+        mm->set_mesh(mesh);
 
 		mmi->set_multimesh(mm);
 

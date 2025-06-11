@@ -55,6 +55,7 @@ struct RenderLayer {
     PackedVector2Array poses;
     PackedVector2Array centers;
     Vector<ObjType::Type> objTypes;
+    uint32_t layerID;
 
     int32_t renderCount = 0;
     void addRenderObject(Vector2 pos, Vector2 size, float rotation, Vector2 center, ObjType::Type type);
@@ -64,7 +65,7 @@ struct RenderLayer {
     Ref<Image> renderDataImg;
     void renderPartial(float scale, Vector2 shift, float aaWidth);
 
-    void init(MultiMeshInstance2D* mmi_, uint32_t layerID);
+    void init(MultiMeshInstance2D* mmi_, uint32_t layerID_);
 };
 
 class FTRender : public Node {
