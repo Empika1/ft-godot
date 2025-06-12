@@ -91,11 +91,11 @@ instance uniform float aaWidth;
 const int layers = 3;
 instance uniform int layerID;
 
-uniform sampler2D[layers] data;
+uniform sampler2DArray data;
 
 const float inf = 1. / 0.;
 void fragment() {
-    vec4 idDataF = texelFetch(data[layerID], ivec2(id % 128, id / 128), 0);
+    vec4 idDataF = texelFetch(data, ivec3(id % 128, id / 128, layerID), 0);
     uvec4 idDataU = uvec4(floatBitsToUint(idDataF[0]), floatBitsToUint(idDataF[1]), floatBitsToUint(idDataF[2]), floatBitsToUint(idDataF[3]));
 
     const uint mask = 0xFFFFFFu;

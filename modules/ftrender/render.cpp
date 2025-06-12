@@ -57,6 +57,7 @@ void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth) {
 				poses[i] * scale + shift);
 		mm->set_instance_transform_2d(i, transform);
 		Color data = packDataToColor(sizes[i] * scale, centers[i] * scale, objTypes[i]);
+        data = Color{float(i) / renderCount, 0, 0, 1};
 		renderDataImg->set_pixel(i % 128, i / 128, data);
 	}
 }
@@ -301,6 +302,8 @@ Ref<Shader> FTRender::shader;
 
 void FTRender::updateShaderColors() {
 	shaderMaterial->set_shader_parameter("colorsGlobal", colors);
+    Variant val = shaderMaterial->get_shader_parameter("colorsGlobal");
+    print_line(val);
 }
 
 void FTRender::updateShaderCornerRadii() {
@@ -323,6 +326,7 @@ void FTRender::setupRenderDataArr() {
 	}
 	renderData.instantiate();
 	renderData->create_from_images(tempImageArr);
+    print_line(renderData->get_format());
 }
 
 void FTRender::setColors(PackedColorArray colors_) {
