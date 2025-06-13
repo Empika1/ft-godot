@@ -471,8 +471,8 @@ void FTRender::addDecalCircle(Vector2 pos, float radius, float rotation, PieceTy
 	addCirclePiece(pos, radius, rotation, type);
 	ObjType::Type borderType = pieceBorders[type];
 	ObjType::Type decalType = pieceDecals[type];
-	Vector2 borderThickness{ borderThicknesses[borderType], borderThicknesses[borderType] };
-	float insideDiameter = getRealInsideSize(radius * 2, borderThickness.x);
+	float borderThickness = borderThicknesses[borderType];
+	float insideDiameter = getRealInsideSize(radius * 2, borderThickness);
 	Vector2 insideSize{ insideDiameter, insideDiameter };
 	layers[2].addRenderObject(pos, insideSize, rotation, insideSize * 0.5, decalType);
 	addCircleJoints(pos, radius, rotation, type);
@@ -513,15 +513,15 @@ void FTRender::addWater(Vector2 pos, Vector2 size, float rotation) {
 }
 
 void FTRender::addCW(Vector2 pos, float radius, float rotation) {
-	addJointedCircle(pos, radius, rotation, PieceType::CW);
+	addDecalCircle(pos, radius, rotation, PieceType::CW);
 }
 
 void FTRender::addCCW(Vector2 pos, float radius, float rotation) {
-	addJointedCircle(pos, radius, rotation, PieceType::CCW);
+	addDecalCircle(pos, radius, rotation, PieceType::CCW);
 }
 
 void FTRender::addUPW(Vector2 pos, float radius, float rotation) {
-	addJointedCircle(pos, radius, rotation, PieceType::UPW);
+	addDecalCircle(pos, radius, rotation, PieceType::UPW);
 }
 
 void FTRender::addBuildArea(Vector2 pos, Vector2 size, float rotation) {
