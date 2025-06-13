@@ -62,8 +62,7 @@ struct RenderLayer {
 
     void resetRender();
 
-    Ref<Image> renderDataImg;
-    void renderPartial(float scale, Vector2 shift, float aaWidth);
+    void renderPartial(float scale, Vector2 shift, float aaWidth, Ref<Image>& renderImg);
 
     void init(MultiMeshInstance2D* mmi_, uint32_t layerID_);
 };
@@ -87,26 +86,25 @@ private:
     static ObjType::Type pieceInsides[PieceType::PIECE_TYPE_SIZE];
     static ObjType::Type pieceDecals[PieceType::PIECE_TYPE_SIZE];
 
-    float scale = 1;
-    Vector2 shift{0, 0};
-
     static void setupPieceBorders();
     static void setupPieceInsides();
     static void setupPieceDecals();
     static void setupPieceArrays();
 
-    static Ref<Shader> shader;
+    float scale = 1;
+    Vector2 shift{0, 0};
+
     Ref<ShaderMaterial> shaderMaterial;
 
     void updateShaderColors();
     void updateShaderCornerRadii();
     void updateShaderBorderThicknesses();
 
-    static Ref<QuadMesh> mesh;
     RenderLayer layers[LAYER_COUNT]; //0: areas, 1: borders, 2: insides
 
-    Ref<Texture2DArray> renderData;
-    void setupRenderDataArr();
+    Ref<Image> renderImg;
+    Ref<ImageTexture> renderTex;
+    void setupRenderData();
 
 public:
     void setColors(PackedColorArray colors_);
@@ -167,7 +165,8 @@ public:
     void addBuildArea(Vector2 pos, Vector2 size, float rotation);
     void addGoalArea(Vector2 pos, Vector2 size, float rotation);
 
-	FTRender();
+    void init(Ref<ShaderMaterial> shaderMaterial_, MultiMeshInstance2D* mmiAreas, MultiMeshInstance2D* mmiBorders, MultiMeshInstance2D* mmiInsides);
+	//FTRender();
 };
 
 VARIANT_ENUM_CAST(ObjType::Type);

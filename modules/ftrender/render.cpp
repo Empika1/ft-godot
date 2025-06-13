@@ -1,7 +1,6 @@
 #include "render.h"
 #include "core/math/vector2.h"
 #include "core/os/memory.h"
-#include "modules/ftrender/embeds.h"
 #include "scene/2d/sprite_2d.h"
 #include "scene/resources/image_texture.h"
 #include "core/string/print_string.h"
@@ -26,7 +25,7 @@ Color packDataToColor(Vector2 size, Vector2 center, ObjType::Type type) {
 	uint32_t i1 = sizeX << 8 | sizeY >> 16;
 	uint32_t i2 = sizeY << 16 | centerX >> 8;
 	uint32_t i3 = centerX << 24 | centerY;
-	uint32_t i4 = type;
+	uint32_t i4 = static_cast<uint32_t>(type);
 	return Color{ uintBitsToFloat(i1), uintBitsToFloat(i2), uintBitsToFloat(i3), uintBitsToFloat(i4) };
 }
 
@@ -45,20 +44,19 @@ void RenderLayer::resetRender() {
 	renderCount = 0;
 }
 
-void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth) {
+void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth, Ref<Image>& renderImg) {
 	Ref<MultiMesh> mm = mmi->get_multimesh();
 	mmi->set_instance_shader_parameter("scale", scale);
 	mmi->set_instance_shader_parameter("aaWidth", aaWidth);
 	mm->set_visible_instance_count(renderCount);
 	for (int i = 0; i < renderCount; i++) {
-		Transform2D transform(rotations[i], //TODO: make sure this works as expected
+		Transform2D transform(rotations[i],
 				(sizes[i] + Vector2{ aaWidth, aaWidth }) * scale,
 				0,
 				poses[i] * scale + shift);
 		mm->set_instance_transform_2d(i, transform);
 		Color data = packDataToColor(sizes[i] * scale, centers[i] * scale, objTypes[i]);
-        data = Color{float(i) / renderCount, 0, 0, 1};
-		renderDataImg->set_pixel(i % 128, i / 128, data);
+		renderImg->set_pixel(i % 128 + layerID * 128, i / 128, data);
 	}
 }
 
@@ -66,8 +64,6 @@ void RenderLayer::init(MultiMeshInstance2D *mmi_, uint32_t layerID_) {
     layerID = layerID_;
 	mmi = mmi_;
 	mmi->set_instance_shader_parameter("layerID", layerID_);
-
-	renderDataImg = Image::create_empty(128, 128, false, Image::FORMAT_RGBAF);
 
     sizes.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
     rotations.resize(LAYER_MULTIMESH_INSTANCE_COUNT);
@@ -173,10 +169,9 @@ void FTRender::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("addBuildArea", "pos", "size", "rotation"), &FTRender::addBuildArea);
 	ClassDB::bind_method(D_METHOD("addGoalArea", "pos", "size", "rotation"), &FTRender::addGoalArea);
 
-	shader.instantiate();
-	shader->set_code(renderShader);
+	ClassDB::bind_method(D_METHOD("init", "shaderMaterial", "mmiAreas", "mmiBorders", "mmiInsides"), &FTRender::init);
 
-	mesh.instantiate();
+    setupPieceArrays();
 }
 
 PackedColorArray FTRender::getDefaultColors() {
@@ -298,12 +293,8 @@ void FTRender::setupPieceArrays() {
 	setupPieceDecals();
 }
 
-Ref<Shader> FTRender::shader;
-
 void FTRender::updateShaderColors() {
 	shaderMaterial->set_shader_parameter("colorsGlobal", colors);
-    Variant val = shaderMaterial->get_shader_parameter("colorsGlobal");
-    print_line(val);
 }
 
 void FTRender::updateShaderCornerRadii() {
@@ -314,19 +305,10 @@ void FTRender::updateShaderBorderThicknesses() {
 	shaderMaterial->set_shader_parameter("borderThicknessesGlobal", borderThicknesses);
 }
 
-Ref<QuadMesh> FTRender::mesh;
-
-void FTRender::setupRenderDataArr() {
-	Vector<Ref<Image>> tempImageArr;
-	tempImageArr.resize(LAYER_COUNT);
-	Ref<Image> tempImage = Image::create_empty(LAYER_DATA_IMAGE_SIZE.x, LAYER_DATA_IMAGE_SIZE.y,
+void FTRender::setupRenderData() {
+	renderImg = Image::create_empty(LAYER_DATA_IMAGE_SIZE.x * LAYER_COUNT, LAYER_DATA_IMAGE_SIZE.y,
 			false, Image::FORMAT_RGBAF);
-	for (int i = 0; i < LAYER_COUNT; i++) {
-		tempImageArr.set(i, tempImage);
-	}
-	renderData.instantiate();
-	renderData->create_from_images(tempImageArr);
-    print_line(renderData->get_format());
+    renderTex = ImageTexture::create_from_image(renderImg);
 }
 
 void FTRender::setColors(PackedColorArray colors_) {
@@ -401,10 +383,10 @@ void FTRender::resetRender() {
 
 void FTRender::render() {
 	for (int i = 0; i < LAYER_COUNT; i++) {
-		layers[i].renderPartial(scale, shift, AA_WIDTH);
-		renderData->update_layer(layers[i].renderDataImg, i);
+		layers[i].renderPartial(scale, shift, AA_WIDTH, renderImg);
 	}
-	shaderMaterial->set_shader_parameter("data", renderData);
+    renderTex->update(renderImg);
+	shaderMaterial->set_shader_parameter("data", renderTex);
 }
 
 float getRealInsideSize(float size, float borderThickness) {
@@ -550,33 +532,51 @@ void FTRender::addGoalArea(Vector2 pos, Vector2 size, float rotation) {
 	addArea(pos, size, rotation, PieceType::GOAL);
 }
 
-FTRender::FTRender() {
-	colors = getDefaultColors();
+void FTRender::init(Ref<ShaderMaterial> shaderMaterial_, MultiMeshInstance2D* mmiAreas, MultiMeshInstance2D* mmiBorders, MultiMeshInstance2D* mmiInsides) {
+    colors = getDefaultColors();
 	cornerRadii = getDefaultCornerRadii();
 	borderThicknesses = getDefaultBorderThicknesses();
 
-	shaderMaterial.instantiate();
-	shaderMaterial->set_shader(shader);
+	shaderMaterial = shaderMaterial_;
 
 	updateShaderColors();
 	updateShaderCornerRadii();
 	updateShaderBorderThicknesses();
 
-	for (int i = 0; i < LAYER_COUNT; i++) {
-		MultiMeshInstance2D *mmi = memnew(MultiMeshInstance2D);
-		add_child(mmi);
-		mmi->set_material(shaderMaterial);
+    layers[0].init(mmiAreas, 0);
+    layers[1].init(mmiBorders, 1);
+    layers[2].init(mmiInsides, 2);
 
-		Ref<MultiMesh> mm;
-		mm.instantiate();
-		mm->set_instance_count(LAYER_MULTIMESH_INSTANCE_COUNT);
-		mm->set_visible_instance_count(0);
-        mm->set_mesh(mesh);
-
-		mmi->set_multimesh(mm);
-
-		layers[i].init(mmi, i);
-	}
-
-	setupRenderDataArr();
+    setupRenderData();
 }
+
+// FTRender::FTRender() {
+// 	colors = getDefaultColors();
+// 	cornerRadii = getDefaultCornerRadii();
+// 	borderThicknesses = getDefaultBorderThicknesses();
+
+// 	shaderMaterial.instantiate();
+// 	shaderMaterial->set_shader(shader);
+
+// 	updateShaderColors();
+// 	updateShaderCornerRadii();
+// 	updateShaderBorderThicknesses();
+
+// 	for (int i = 0; i < LAYER_COUNT; i++) {
+// 		MultiMeshInstance2D *mmi = memnew(MultiMeshInstance2D);
+// 		add_child(mmi);
+// 		mmi->set_material(shaderMaterial);
+
+// 		Ref<MultiMesh> mm;
+// 		mm.instantiate();
+// 		mm->set_instance_count(LAYER_MULTIMESH_INSTANCE_COUNT);
+// 		mm->set_visible_instance_count(0);
+//         mm->set_mesh(mesh);
+
+// 		mmi->set_multimesh(mm);
+
+// 		layers[i].init(mmi, i);
+// 	}
+
+// 	setupRenderDataArr();
+// }
