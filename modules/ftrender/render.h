@@ -37,34 +37,34 @@ struct PieceType {
     };
 };
 
-static const int LAYER_COUNT = 3;
-static const int LAYER_MULTIMESH_INSTANCE_COUNT = 16384;
-static const Vector2i LAYER_DATA_IMAGE_SIZE{128, 128};
-static const float AA_WIDTH = 0.5;
+struct SdfType {
+    enum Type : uint8_t {
+        ROUNDED_RECT, CW, CCW, UPW, SDF_TYPE_SIZE
+    };
+};
 
-static const float JOINT_RADIUS = 4;
-static const float INNER_JOINT_THRESHOLD_RADIUS = 20;
-static const Vector2 WOOD_SIZE_PADDING{-2, 2};
-static const Vector2 WATER_SIZE_PADDING{-2, 6};
-static const float GHOST_ROD_PADDING = 1;
+static const int LAYER_COUNT = 3;
 
 struct RenderLayer {
     MultiMeshInstance2D* mmi;
     PackedVector2Array sizes;
     PackedFloat32Array rotations;
     PackedVector2Array poses;
-    PackedVector2Array centers;
     Vector<ObjType::Type> objTypes;
     uint32_t layerID;
 
     int32_t renderCount = 0;
-    void addRenderObject(Vector2 pos, Vector2 size, float rotation, Vector2 center, ObjType::Type type);
+    void addRenderObject(Vector2 pos, Vector2 size, float rotation, ObjType::Type type,
+        int32_t multimeshInstanceCount);
 
     void resetRender();
 
-    void renderPartial(float scale, Vector2 shift, float aaWidth, Ref<Image>& renderImg);
+    void renderPartial(float scale, Vector2 shift, float aaWidth,
+		PackedColorArray colors, PackedFloat32Array cornerRadii, PackedFloat32Array borderThicknesses,
+		bool (*getObjIsCircle)(ObjType::Type), SdfType::Type (*getObjSdfType)(ObjType::Type), Ref<Image> &renderImg,
+        Vector2i dataImageSize);
 
-    void init(MultiMeshInstance2D* mmi_, uint32_t layerID_);
+    void init(MultiMeshInstance2D* mmi_, uint32_t layerID_, int32_t multimeshInstanceCount);
 };
 
 class FTRender : public Node {
@@ -74,39 +74,25 @@ protected:
 	static void _bind_methods();
 
 private:
+    int32_t layerMultimeshInstanceCount;
+    Vector2i layerDataImageSize;
+
     PackedColorArray colors;
     PackedFloat32Array cornerRadii;
     PackedFloat32Array borderThicknesses;
 
+    float aaWidth;
+    float jointRadius;
+    float innerJointThresholdRadius;
+    Vector2 woodSizePadding;
+    Vector2 waterSizePadding;
+    float ghostRodPadding;
+
+public:
     static PackedColorArray getDefaultColors();
     static PackedFloat32Array getDefaultCornerRadii();
     static PackedFloat32Array getDefaultBorderThicknesses();
 
-    static ObjType::Type pieceBorders[PieceType::PIECE_TYPE_SIZE];
-    static ObjType::Type pieceInsides[PieceType::PIECE_TYPE_SIZE];
-    static ObjType::Type pieceDecals[PieceType::PIECE_TYPE_SIZE];
-
-    static void setupPieceBorders();
-    static void setupPieceInsides();
-    static void setupPieceDecals();
-    static void setupPieceArrays();
-
-    float scale = 1;
-    Vector2 shift{0, 0};
-
-    Ref<ShaderMaterial> shaderMaterial;
-
-    void updateShaderColors();
-    void updateShaderCornerRadii();
-    void updateShaderBorderThicknesses();
-
-    RenderLayer layers[LAYER_COUNT]; //0: areas, 1: borders, 2: insides
-
-    Ref<Image> renderImg;
-    Ref<ImageTexture> renderTex;
-    void setupRenderData();
-
-public:
     void setColors(PackedColorArray colors_);
     PackedColorArray getColors();
 
@@ -125,15 +111,23 @@ public:
     void setBorderThickness(ObjType::Type objType, double borderThickness);
     double getBorderThickness(ObjType::Type objType);
 
-    void setScale(float scale_);
-    float getScale();
+    static ObjType::Type getPieceBorder(PieceType::Type piece);
+    static ObjType::Type getPieceInside(PieceType::Type piece);
+    static ObjType::Type getPieceDecal(PieceType::Type piece);
+    static bool getObjIsCircle(ObjType::Type obj);
+    static SdfType::Type getObjSdfType(ObjType::Type obj);
 
-    void setShift(Vector2 shift_);
-    Vector2 getShift();
+private:
+    Ref<ShaderMaterial> shaderMaterial;
+    RenderLayer layers[LAYER_COUNT]; //0: areas, 1: borders, 2: insides
+    Ref<Image> renderImg;
+    Ref<ImageTexture> renderTex;
+    void setupRenderData();
 
+public:
     void resetRender();
 
-    void render();
+    void render(float scale, Vector2 shift);
 
 private:
     void addRoundedRect(Vector2 pos, Vector2 size, float rotation, PieceType::Type type,
@@ -165,11 +159,15 @@ public:
     void addBuildArea(Vector2 pos, Vector2 size, float rotation);
     void addGoalArea(Vector2 pos, Vector2 size, float rotation);
 
-    void init(Ref<ShaderMaterial> shaderMaterial_, MultiMeshInstance2D* mmiAreas, MultiMeshInstance2D* mmiBorders, MultiMeshInstance2D* mmiInsides);
-	//FTRender();
+    void initLayers(int32_t layerMultimeshInstanceCount_, Vector2i layerDataImageSize);
+    void initResources(Ref<ShaderMaterial> shaderMaterial_, MultiMeshInstance2D* mmiAreas, MultiMeshInstance2D* mmiBorders, MultiMeshInstance2D* mmiInsides);
+    void initVisuals(PackedColorArray colors_, PackedFloat32Array cornerRadii_, PackedFloat32Array borderThicknesses, 
+        float aaWidth, float jointRadius_, float innerJointThresholdRadius_, Vector2 woodSizePadding, 
+        Vector2 waterSizePadding, float ghostRodPadding);
 };
 
 VARIANT_ENUM_CAST(ObjType::Type);
 VARIANT_ENUM_CAST(PieceType::Type);
+VARIANT_ENUM_CAST(SdfType::Type);
 
 #endif // FTRENDER_H
