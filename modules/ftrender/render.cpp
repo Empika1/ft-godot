@@ -18,18 +18,13 @@ float uintBitsToFloat(uint32_t u) {
 }
 
 // data layout:
-// size: 48 bytes as fixed point | center: 48 bytes as fixed point | type: 32 bytes as enum (lots of space to spare)
-Color packDataToColor(Vector2 size, Vector2 center, ObjType::Type type) {
-	uint32_t sizeX = std::lroundf(size.x * 16), sizeY = std::lroundf(size.y * 16);
-	uint32_t centerX = std::lroundf(center.x * 16), centerY = std::lroundf(center.y * 16);
-	uint32_t i1 = sizeX << 8 | sizeY >> 16;
-	uint32_t i2 = sizeY << 16 | centerX >> 8;
-	uint32_t i3 = centerX << 24 | centerY;
-	uint32_t i4 = static_cast<uint32_t>(type);
-	return Color{ uintBitsToFloat(i1), uintBitsToFloat(i2), uintBitsToFloat(i3), uintBitsToFloat(i4) };
-}
-
-Color packDataToColorNew(Color color, Vector2 size, float cornerRadius, float borderThickness, SdfType::Type sdfType) {
+// color: 40 bits as fixed point (10 bits per channel)
+// size: 48 bits as fixed point (24 per coord)
+// corner radius: 19 bits as fixed point
+// border thickness: 19 bits as fixed point
+// SDF used: 2 bits
+// size, radius, and thickness all stored to the precision of 1/8th of a pixel
+Color packDataToColor(Color color, Vector2 size, float cornerRadius, float borderThickness, SdfType::Type sdfType) {
 	uint32_t r = static_cast<uint32_t>(CLAMP(color.r * 1024., 0, 1023));
 	uint32_t g = static_cast<uint32_t>(CLAMP(color.g * 1024., 0, 1023));
 	uint32_t b = static_cast<uint32_t>(CLAMP(color.b * 1024., 0, 1023));
@@ -90,7 +85,7 @@ void RenderLayer::renderPartial(float scale, Vector2 shift, float aaWidth,
 				: INFINITY;
 		SdfType::Type sdfType = getObjSdfType(type);
 
-		Color data = packDataToColorNew(color, size, cornerRadius, borderThickness, sdfType);
+		Color data = packDataToColor(color, size, cornerRadius, borderThickness, sdfType);
 		renderImg->set_pixel(i % dataImageSize.x + layerID * dataImageSize.x, i / dataImageSize.y, data);
 	}
 }
